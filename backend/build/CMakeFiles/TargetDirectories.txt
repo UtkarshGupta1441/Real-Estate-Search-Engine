@@ -1,3 +1,0 @@
-C:/Users/utkar/OneDrive/Desktop/Real Estate Search Engine/backend/build/CMakeFiles/backend.dir
-C:/Users/utkar/OneDrive/Desktop/Real Estate Search Engine/backend/build/CMakeFiles/ALL_BUILD.dir
-C:/Users/utkar/OneDrive/Desktop/Real Estate Search Engine/backend/build/CMakeFiles/ZERO_CHECK.dir
