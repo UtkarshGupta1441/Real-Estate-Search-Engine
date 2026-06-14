@@ -1,0 +1,44 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\utkar\OneDrive\Desktop\Real Estate Search Engine\backend\build\_deps\crow-subbuild\CMakeFiles\28763a82e9df86fdac7a4325c24d62ad\crow-populate-mkdir.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\utkar\OneDrive\Desktop\Real Estate Search Engine\backend\build\_deps\crow-subbuild\CMakeFiles\28763a82e9df86fdac7a4325c24d62ad\crow-populate-download.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\utkar\OneDrive\Desktop\Real Estate Search Engine\backend\build\_deps\crow-subbuild\CMakeFiles\28763a82e9df86fdac7a4325c24d62ad\crow-populate-update.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\utkar\OneDrive\Desktop\Real Estate Search Engine\backend\build\_deps\crow-subbuild\CMakeFiles\28763a82e9df86fdac7a4325c24d62ad\crow-populate-patch.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\utkar\OneDrive\Desktop\Real Estate Search Engine\backend\build\_deps\crow-subbuild\CMakeFiles\28763a82e9df86fdac7a4325c24d62ad\crow-populate-configure.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\utkar\OneDrive\Desktop\Real Estate Search Engine\backend\build\_deps\crow-subbuild\CMakeFiles\28763a82e9df86fdac7a4325c24d62ad\crow-populate-build.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\utkar\OneDrive\Desktop\Real Estate Search Engine\backend\build\_deps\crow-subbuild\CMakeFiles\28763a82e9df86fdac7a4325c24d62ad\crow-populate-install.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\utkar\OneDrive\Desktop\Real Estate Search Engine\backend\build\_deps\crow-subbuild\CMakeFiles\28763a82e9df86fdac7a4325c24d62ad\crow-populate-test.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\utkar\OneDrive\Desktop\Real Estate Search Engine\backend\build\_deps\crow-subbuild\CMakeFiles\95e9b8f18540a7ff79a229f61b5ce9c3\crow-populate-complete.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\utkar\OneDrive\Desktop\Real Estate Search Engine\backend\build\_deps\crow-subbuild\CMakeFiles\dd222b94b270d3c93716dfab8cfe4bef\crow-populate.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\utkar\OneDrive\Desktop\Real Estate Search Engine\backend\build\_deps\crow-subbuild\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="C:\Users\utkar\OneDrive\Desktop\Real Estate Search Engine\backend\build\_deps\crow-subbuild\CMakeFiles\crow-populate" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{40960124-D46A-36B6-944B-76478EAF6B82}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

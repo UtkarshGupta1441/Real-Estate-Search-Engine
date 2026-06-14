@@ -1,0 +1,10 @@
+^C:\USERS\UTKAR\ONEDRIVE\DESKTOP\REAL ESTATE SEARCH ENGINE\BACKEND\BUILD\_DEPS\CROW-SUBBUILD\CMAKELISTS.TXT
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" "-SC:/Users/utkar/OneDrive/Desktop/Real Estate Search Engine/backend/build/_deps/crow-subbuild" "-BC:/Users/utkar/OneDrive/Desktop/Real Estate Search Engine/backend/build/_deps/crow-subbuild" --check-stamp-file "C:/Users/utkar/OneDrive/Desktop/Real Estate Search Engine/backend/build/_deps/crow-subbuild/CMakeFiles/generate.stamp"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

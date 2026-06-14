@@ -1,0 +1,46 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "C:/Users/utkar/OneDrive/Desktop/Real Estate Search Engine/backend/build/_deps/crow-subbuild/CMakeFiles/crow-populate"
+		},
+		{
+			"file" : "C:/Users/utkar/OneDrive/Desktop/Real Estate Search Engine/backend/build/_deps/crow-subbuild/CMakeFiles/dd222b94b270d3c93716dfab8cfe4bef/crow-populate.rule"
+		},
+		{
+			"file" : "C:/Users/utkar/OneDrive/Desktop/Real Estate Search Engine/backend/build/_deps/crow-subbuild/CMakeFiles/95e9b8f18540a7ff79a229f61b5ce9c3/crow-populate-complete.rule"
+		},
+		{
+			"file" : "C:/Users/utkar/OneDrive/Desktop/Real Estate Search Engine/backend/build/_deps/crow-subbuild/CMakeFiles/28763a82e9df86fdac7a4325c24d62ad/crow-populate-build.rule"
+		},
+		{
+			"file" : "C:/Users/utkar/OneDrive/Desktop/Real Estate Search Engine/backend/build/_deps/crow-subbuild/CMakeFiles/28763a82e9df86fdac7a4325c24d62ad/crow-populate-configure.rule"
+		},
+		{
+			"file" : "C:/Users/utkar/OneDrive/Desktop/Real Estate Search Engine/backend/build/_deps/crow-subbuild/CMakeFiles/28763a82e9df86fdac7a4325c24d62ad/crow-populate-download.rule"
+		},
+		{
+			"file" : "C:/Users/utkar/OneDrive/Desktop/Real Estate Search Engine/backend/build/_deps/crow-subbuild/CMakeFiles/28763a82e9df86fdac7a4325c24d62ad/crow-populate-install.rule"
+		},
+		{
+			"file" : "C:/Users/utkar/OneDrive/Desktop/Real Estate Search Engine/backend/build/_deps/crow-subbuild/CMakeFiles/28763a82e9df86fdac7a4325c24d62ad/crow-populate-mkdir.rule"
+		},
+		{
+			"file" : "C:/Users/utkar/OneDrive/Desktop/Real Estate Search Engine/backend/build/_deps/crow-subbuild/CMakeFiles/28763a82e9df86fdac7a4325c24d62ad/crow-populate-patch.rule"
+		},
+		{
+			"file" : "C:/Users/utkar/OneDrive/Desktop/Real Estate Search Engine/backend/build/_deps/crow-subbuild/CMakeFiles/28763a82e9df86fdac7a4325c24d62ad/crow-populate-test.rule"
+		},
+		{
+			"file" : "C:/Users/utkar/OneDrive/Desktop/Real Estate Search Engine/backend/build/_deps/crow-subbuild/CMakeFiles/28763a82e9df86fdac7a4325c24d62ad/crow-populate-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"crow-populate"
+		],
+		"name" : "crow-populate"
+	}
+}

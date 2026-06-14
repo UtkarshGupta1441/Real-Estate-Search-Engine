@@ -8,8 +8,8 @@
       "args": [],
       "stopAtEntry": false,
       "externalConsole": true,
-      "cwd": "c:/Users/utkar/Desktop/New_Project_Git/newrepo",
-      "program": "c:/Users/utkar/Desktop/New_Project_Git/newrepo/build/Debug/outDebug",
+      "cwd": "c:/Users/utkar/OneDrive/Desktop/frontend_minor",
+      "program": "c:/Users/utkar/OneDrive/Desktop/frontend_minor/build/Debug/outDebug",
       "MIMode": "gdb",
       "miDebuggerPath": "gdb",
       "setupCommands": [

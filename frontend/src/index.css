@@ -1,0 +1,48 @@
+@import "tailwindcss";
+
+@theme {
+  /* Obsidian & Chrome Theme */
+  --color-brand-50: #ecfeff;
+  --color-brand-100: #cffafe;
+  --color-brand-500: #06b6d4; /* Cyan glowing accent */
+  --color-brand-600: #0891b2;
+  --color-brand-900: #164e63;
+}
+
+@layer base {
+  body {
+    @apply bg-neutral-950 text-neutral-200;
+  }
+}
+
+@layer utilities {
+  .animate-spring-up {
+    opacity: 0;
+    /* Extremely fast, snappy entrance with a slight bounce */
+    animation: springUp 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+  }
+  
+  .dark-map-tiles {
+    /* Inverts standard map tiles into a gorgeous dark mode */
+    filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+  }
+  
+  .glass-panel {
+    @apply bg-neutral-900/60 backdrop-blur-xl border border-white/10 shadow-2xl;
+  }
+
+  .glass-input {
+    @apply bg-neutral-950/50 border border-neutral-800 text-neutral-100 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-all;
+  }
+}
+
+@keyframes springUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
