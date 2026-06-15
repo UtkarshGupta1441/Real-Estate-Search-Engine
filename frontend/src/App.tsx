@@ -6,13 +6,19 @@ interface Property {
   price: number;
   area: number;
   bedrooms: number;
+  distance_km?: number;
   bbox: { x_min: number; y_min: number; x_max: number; y_max: number; };
 }
 
 function App() {
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [searched, setSearched] = useState(false);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [queryTime, setQueryTime] = useState<number | null>(null);
 
   // Default to New York
   const [form, setForm] = useState({
@@ -24,27 +30,56 @@ function App() {
     minBedrooms: '1'
   });
 
+  const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+
+  const fetchProperties = async (pageNum: number, append: boolean) => {
+    const query = new URLSearchParams({
+      x: form.x,
+      y: form.y,
+      distance_km: form.distance,
+      max_price: form.maxPrice,
+      min_area: form.minArea,
+      min_bedrooms: form.minBedrooms,
+      page: pageNum.toString(),
+      per_page: '50'
+    });
+
+    const res = await fetch(`${API_BASE}/api/properties/search?${query.toString()}`);
+    const data = await res.json();
+
+    const newProps = data.properties || [];
+    if (append) {
+      setProperties(prev => [...prev, ...newProps]);
+    } else {
+      setProperties(newProps);
+    }
+    setTotal(data.total ?? newProps.length);
+    setHasMore(data.has_more ?? false);
+    setPage(pageNum);
+    setQueryTime(data.query_time_ms ?? null);
+  };
+
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setSearched(true);
     try {
-      const query = new URLSearchParams({
-        x: form.x,
-        y: form.y,
-        distance_km: form.distance,
-        max_price: form.maxPrice,
-        min_area: form.minArea,
-        min_bedrooms: form.minBedrooms
-      });
-      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8080';
-      const res = await fetch(`${API_BASE}/api/properties/search?${query.toString()}`);
-      const data = await res.json();
-      setProperties(data.properties || []);
+      await fetchProperties(1, false);
     } catch (err) {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleLoadMore = async () => {
+    setLoadingMore(true);
+    try {
+      await fetchProperties(page + 1, true);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingMore(false);
     }
   };
 
@@ -164,15 +199,28 @@ function App() {
 
           {searched && !loading && properties.length > 0 && (
             <div>
-              <div className="mb-8 flex justify-between items-center border-b border-white/10 pb-4">
+              {/* Results Header */}
+              <div className="mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/10 pb-4">
                 <h2 className="text-2xl font-black tracking-tight text-white">
-                  <span className="text-brand-500">{properties.length}</span> Premium Listings Found
+                  <span className="text-brand-500">{properties.length}</span>
+                  {total > properties.length && (
+                    <span className="text-neutral-500 text-lg font-medium"> of {total}</span>
+                  )}
+                  {' '}Premium Listings Found
                 </h2>
+                {queryTime !== null && (
+                  <span className="text-xs font-mono tracking-wide bg-neutral-800/80 text-neutral-400 px-3 py-1.5 rounded-full border border-white/10 flex items-center gap-2">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                    {queryTime < 1 ? '<1' : queryTime.toFixed(1)}ms
+                  </span>
+                )}
               </div>
+
+              {/* Property Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
                 {properties.map((p, i) => (
                   <div 
-                    key={i} 
+                    key={`${p.location}-${i}`} 
                     className="group glass-panel rounded-xl overflow-hidden flex flex-col h-full transform hover:-translate-y-2 hover:border-brand-500/50 hover:shadow-[0_10px_30px_rgba(6,182,212,0.15)] transition-all duration-300 animate-spring-up"
                     style={{ animationDelay: `${Math.min(i * 0.05, 0.4)}s` }}
                   >
@@ -183,6 +231,11 @@ function App() {
                         <div className="bg-black/60 backdrop-blur-md border border-white/20 px-3 py-1 rounded-md text-sm font-black tracking-wide text-brand-50 shadow-lg">
                           ${p.price.toLocaleString()}
                         </div>
+                        {p.distance_km !== undefined && (
+                          <div className="bg-black/60 backdrop-blur-md border border-white/20 px-2.5 py-1 rounded-md text-xs font-bold text-neutral-300">
+                            {p.distance_km < 1 ? `${(p.distance_km * 1000).toFixed(0)}m` : `${p.distance_km.toFixed(1)}km`}
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div className="p-6 flex flex-col flex-grow bg-neutral-900/50">
@@ -201,6 +254,36 @@ function App() {
                   </div>
                 ))}
               </div>
+
+              {/* Load More Button */}
+              {hasMore && (
+                <div className="flex justify-center mt-12">
+                  <button
+                    onClick={handleLoadMore}
+                    disabled={loadingMore}
+                    className="group inline-flex items-center gap-3 py-3.5 px-10 border border-white/15 text-sm font-bold uppercase tracking-wider rounded-lg text-neutral-300 bg-white/5 backdrop-blur-sm hover:bg-white/10 hover:border-brand-500/40 hover:text-brand-500 hover:shadow-[0_0_20px_rgba(6,182,212,0.15)] focus:outline-none transition-all duration-300 disabled:opacity-50"
+                  >
+                    {loadingMore ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-r-2 border-brand-500"></div>
+                        Loading...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4 transition-transform group-hover:translate-y-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                        Load More ({total - properties.length} remaining)
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {/* All loaded indicator */}
+              {!hasMore && total > 0 && properties.length >= total && (
+                <div className="text-center mt-10 text-neutral-600 text-sm font-medium tracking-wide uppercase">
+                  — All {total} listings loaded —
+                </div>
+              )}
             </div>
           )}
         </div>

@@ -9,8 +9,21 @@
 #include <string>
 #include <fstream>
 #include <sstream>
+#include <chrono>
+#include <utility>
 
 using namespace std;
+
+// ============================================================================
+// R-Tree Configuration
+// ============================================================================
+static const int MAX_NODE_ENTRIES = 64;   // Max children per node / entries per leaf
+static const int DEFAULT_PER_PAGE = 50;   // Default results per page
+static const int MAX_PER_PAGE = 200;      // Hard cap on results per page
+
+// ============================================================================
+// Spatial Data Structures
+// ============================================================================
 
 // Represents a bounding box or spatial region
 struct BoundingBox {
@@ -20,8 +33,12 @@ struct BoundingBox {
         : x_min(x1), y_min(y1), x_max(x2), y_max(y2) {}
 
     bool intersects(const BoundingBox& other) const {
-        return !(x_min > other.x_max || x_max < other.x_min || y_min > other.y_max || y_max < other.y_min);
+        return !(x_min > other.x_max || x_max < other.x_min ||
+                 y_min > other.y_max || y_max < other.y_min);
     }
+
+    double centerX() const { return (x_min + x_max) / 2.0; }
+    double centerY() const { return (y_min + y_max) / 2.0; }
 };
 
 // Represents a property with its details and bounding box
@@ -48,162 +65,237 @@ public:
         json_obj["bbox"]["y_max"] = bbox.y_max;
         return json_obj;
     }
+
+    crow::json::wvalue toJsonWithDistance(double dist_km) const {
+        auto json_obj = toJson();
+        json_obj["distance_km"] = std::round(dist_km * 100.0) / 100.0;
+        return json_obj;
+    }
 };
 
-// Represents an R-tree node which can either be an internal node or a leaf node
+// ============================================================================
+// R-Tree Implementation — Sort-Tile-Recursive (STR) Bulk Loading
+// ============================================================================
+
 class RTreeNode {
 public:
-    std::vector<RTreeNode*> children;  // For internal nodes, this holds other nodes or properties
-    std::vector<Property*> leaf_properties; // For leaf nodes, this holds properties
-    BoundingBox bounding_box;
+    BoundingBox bbox;
     bool is_leaf;
+    std::vector<RTreeNode*> children;   // Internal node children
+    std::vector<Property*> entries;      // Leaf node entries
 
-    RTreeNode(BoundingBox bbox, bool leaf = false)
-        : bounding_box(bbox), is_leaf(leaf) {}
+    RTreeNode() : bbox(), is_leaf(true) {}
 
-    // Insert a property into the node
-    void insert(Property* child) {
+    // Recompute this node's bounding box from its contents
+    void computeBoundingBox() {
         if (is_leaf) {
-            leaf_properties.push_back(child);
-            // Optional: split logic can go here for a proper R-tree
-            // Currently behaving mostly as an expanding single-node or simple hierarchy
-            updateBoundingBox();
-        } else {
-            children.push_back(new RTreeNode(child->bbox, true)); 
-            children.back()->insert(child);
-            updateBoundingBox();
-        }
-    }
-
-    // Update the bounding box of this node based on its children
-    void updateBoundingBox() {
-        if (children.empty() && leaf_properties.empty()) return;
-        double x_min = bounding_box.x_min;
-        double y_min = bounding_box.y_min;
-        double x_max = bounding_box.x_max;
-        double y_max = bounding_box.y_max;
-
-        if (is_leaf) {
-            for (const auto& prop : leaf_properties) {
-                x_min = std::min(x_min, prop->bbox.x_min);
-                y_min = std::min(y_min, prop->bbox.y_min);
-                x_max = std::max(x_max, prop->bbox.x_max);
-                y_max = std::max(y_max, prop->bbox.y_max);
+            if (entries.empty()) return;
+            double xn = entries[0]->bbox.x_min, yn = entries[0]->bbox.y_min;
+            double xx = entries[0]->bbox.x_max, yx = entries[0]->bbox.y_max;
+            for (size_t i = 1; i < entries.size(); i++) {
+                xn = std::min(xn, entries[i]->bbox.x_min);
+                yn = std::min(yn, entries[i]->bbox.y_min);
+                xx = std::max(xx, entries[i]->bbox.x_max);
+                yx = std::max(yx, entries[i]->bbox.y_max);
             }
+            bbox = BoundingBox(xn, yn, xx, yx);
         } else {
-            for (const auto& node : children) {
-                x_min = std::min(x_min, node->bounding_box.x_min);
-                y_min = std::min(y_min, node->bounding_box.y_min);
-                x_max = std::max(x_max, node->bounding_box.x_max);
-                y_max = std::max(y_max, node->bounding_box.y_max);
+            if (children.empty()) return;
+            double xn = children[0]->bbox.x_min, yn = children[0]->bbox.y_min;
+            double xx = children[0]->bbox.x_max, yx = children[0]->bbox.y_max;
+            for (size_t i = 1; i < children.size(); i++) {
+                xn = std::min(xn, children[i]->bbox.x_min);
+                yn = std::min(yn, children[i]->bbox.y_min);
+                xx = std::max(xx, children[i]->bbox.x_max);
+                yx = std::max(yx, children[i]->bbox.y_max);
             }
+            bbox = BoundingBox(xn, yn, xx, yx);
         }
-
-        bounding_box = BoundingBox(x_min, y_min, x_max, y_max);
     }
 };
 
-// Represents the R-tree structure
 class RTree {
     RTreeNode* root;
 
 public:
-    RTree() {
-        root = new RTreeNode(BoundingBox(-180, -90, 180, 90), true); // Define an initial bounding box
+    RTree() : root(nullptr) {}
+
+    // Build an optimally packed R-Tree using Sort-Tile-Recursive (STR) bulk loading.
+    // All properties must be loaded into a vector first, then passed here once.
+    void bulkLoad(std::vector<Property*>& properties) {
+        if (properties.empty()) {
+            root = new RTreeNode();
+            root->bbox = BoundingBox(-180, -90, 180, 90);
+            return;
+        }
+        root = buildSTR(properties, 0, (int)properties.size(), 0);
+        std::cout << "R-Tree stats: depth=" << getDepth()
+                  << ", nodes=" << getNodeCount()
+                  << ", entries=" << properties.size() << std::endl;
     }
 
-    // Insert a property into the R-tree
-    void insert(Property* prop) {
-        root->insert(prop);
-    }
-
-    // Query properties within a specified range
-    std::vector<Property*> query(BoundingBox range) {
+    // Spatial range query: find all properties whose bbox intersects the given range
+    std::vector<Property*> query(const BoundingBox& range) const {
         std::vector<Property*> results;
-        queryRecursive(root, range, results);
+        if (root) queryRecursive(root, range, results);
         return results;
     }
 
-    // Query properties near a specified location and within a distance range
-    std::vector<Property*> queryNearLocation(double x, double y, double distance_km, double max_price, double min_area, int min_bedrooms) {
-        std::vector<Property*> results;
-        // Approximate degrees to km: 1 degree latitude ~ 111 km
+    // Proximity query: find properties near (lon, lat) within distance_km, with filters.
+    // Returns (property, distance_km) pairs sorted by distance ascending.
+    std::vector<std::pair<Property*, double>> queryNearLocation(
+        double lon, double lat, double distance_km,
+        double max_price, double min_area, int min_bedrooms) const
+    {
+        // Convert km to approximate degrees for bounding box pre-filter
         double approx_degrees = distance_km / 111.0;
-        BoundingBox search_area(x - approx_degrees, y - approx_degrees, x + approx_degrees, y + approx_degrees);
-        std::vector<Property*> properties = query(search_area);
+        BoundingBox search_area(
+            lon - approx_degrees, lat - approx_degrees,
+            lon + approx_degrees, lat + approx_degrees
+        );
 
-        for (const auto& prop : properties) {
-            double dist = calculateDistance(x, y, (prop->bbox.x_min + prop->bbox.x_max) / 2.0, (prop->bbox.y_min + prop->bbox.y_max) / 2.0);
+        auto candidates = query(search_area);
+
+        std::vector<std::pair<Property*, double>> results;
+        results.reserve(candidates.size());
+
+        for (auto* prop : candidates) {
+            double dist = calculateDistance(lon, lat, prop->bbox.centerX(), prop->bbox.centerY());
             if (dist <= distance_km &&
                 prop->price <= max_price &&
                 prop->area >= min_area &&
                 prop->bedrooms >= min_bedrooms) {
-                results.push_back(prop);
+                results.emplace_back(prop, dist);
             }
         }
+
+        // Sort by distance (nearest first)
+        std::sort(results.begin(), results.end(),
+            [](const std::pair<Property*, double>& a, const std::pair<Property*, double>& b) {
+                return a.second < b.second;
+            });
 
         return results;
     }
 
+    int getDepth() const { return root ? depthOf(root) : 0; }
+    int getNodeCount() const { return root ? countNodes(root) : 0; }
+
 private:
-    // Recursive function to perform the query
-    void queryRecursive(RTreeNode* node, BoundingBox range, std::vector<Property*>& results) {
-        if (!node->bounding_box.intersects(range)) return;
+    // STR bulk-loading: recursively sort by alternating axis and partition into groups
+    RTreeNode* buildSTR(std::vector<Property*>& props, int start, int end, int depth) {
+        int count = end - start;
+
+        // Base case: fits in a single leaf node
+        if (count <= MAX_NODE_ENTRIES) {
+            auto* node = new RTreeNode();
+            node->is_leaf = true;
+            node->entries.assign(props.begin() + start, props.begin() + end);
+            node->computeBoundingBox();
+            return node;
+        }
+
+        // Alternate sort axis: X at even depths, Y at odd depths
+        if (depth % 2 == 0) {
+            std::sort(props.begin() + start, props.begin() + end,
+                [](const Property* a, const Property* b) {
+                    return a->bbox.centerX() < b->bbox.centerX();
+                });
+        } else {
+            std::sort(props.begin() + start, props.begin() + end,
+                [](const Property* a, const Property* b) {
+                    return a->bbox.centerY() < b->bbox.centerY();
+                });
+        }
+
+        // Determine number of child groups (cap at MAX_NODE_ENTRIES fan-out)
+        int num_groups = std::min(MAX_NODE_ENTRIES,
+                                  (int)std::ceil((double)count / MAX_NODE_ENTRIES));
+        int group_size = (int)std::ceil((double)count / num_groups);
+
+        auto* node = new RTreeNode();
+        node->is_leaf = false;
+
+        for (int i = 0; i < num_groups; i++) {
+            int child_start = start + i * group_size;
+            int child_end = std::min(start + (i + 1) * group_size, end);
+            if (child_start >= end) break;
+
+            auto* child = buildSTR(props, child_start, child_end, depth + 1);
+            node->children.push_back(child);
+        }
+
+        node->computeBoundingBox();
+        return node;
+    }
+
+    // Recursive spatial intersection search
+    void queryRecursive(RTreeNode* node, const BoundingBox& range,
+                        std::vector<Property*>& results) const {
+        if (!node->bbox.intersects(range)) return;
 
         if (node->is_leaf) {
-            for (const auto& prop : node->leaf_properties) {
+            for (auto* prop : node->entries) {
                 if (range.intersects(prop->bbox)) {
                     results.push_back(prop);
                 }
             }
         } else {
-            for (const auto& child : node->children) {
+            for (auto* child : node->children) {
                 queryRecursive(child, range, results);
             }
         }
     }
 
-    // Calculate the Euclidean distance between two points (latitude and longitude) in kilometers
-    // Better approximation using Haversine or simple spherical equirectangular approximation
-    double calculateDistance(double lon1, double lat1, double lon2, double lat2) {
-        double R = 6371; // km
-        double x = (lon2 - lon1) * std::cos((lat1 + lat2) / 2 * M_PI / 180.0);
+    // Equirectangular approximation — accurate enough for property search radii
+    static double calculateDistance(double lon1, double lat1, double lon2, double lat2) {
+        const double R = 6371.0; // Earth radius in km
+        double x = (lon2 - lon1) * std::cos((lat1 + lat2) / 2.0 * M_PI / 180.0);
         double y = (lat2 - lat1);
-        double distance = std::sqrt(x * x + y * y) * R * M_PI / 180.0;
-        return distance;
+        return std::sqrt(x * x + y * y) * R * M_PI / 180.0;
+    }
+
+    static int depthOf(RTreeNode* node) {
+        if (node->is_leaf) return 1;
+        int d = 0;
+        for (auto* c : node->children) d = std::max(d, depthOf(c));
+        return 1 + d;
+    }
+
+    static int countNodes(RTreeNode* node) {
+        int c = 1;
+        if (!node->is_leaf)
+            for (auto* ch : node->children) c += countNodes(ch);
+        return c;
     }
 };
 
-void loadDataFromCSV(RTree& tree, const std::string& filename) {
+// ============================================================================
+// CSV Data Loader
+// ============================================================================
+
+std::vector<Property*> loadDataFromCSV(const std::string& filename) {
+    std::vector<Property*> properties;
     std::ifstream file(filename);
     if (!file.is_open()) {
         std::cerr << "Could not open the file: " << filename << std::endl;
-        return;
+        return properties;
     }
 
     std::string line;
     std::getline(file, line); // Skip header
 
-    int count = 0;
     while (std::getline(file, line)) {
-        std::stringstream ss(line);
-        std::string location;
-        std::string price_str, area_str, bedrooms_str, x_min_str, y_min_str, x_max_str, y_max_str;
-
-        // format: location,price,area,bedrooms,x_min,y_min,x_max,y_max
-        // Location has comma inside it (e.g., "123 Main St, New York"), so we need to handle quotes or just split correctly
-        // Wait, Python's csv.writer handles quotes automatically. Let's parse CSV properly.
-        
-        // Simple manual CSV parse (handling quotes)
+        // Simple manual CSV parse (handling quoted fields)
         bool in_quotes = false;
         std::vector<std::string> row;
-        std::string current_val = "";
+        std::string current_val;
         for (char c : line) {
             if (c == '"') {
                 in_quotes = !in_quotes;
             } else if (c == ',' && !in_quotes) {
                 row.push_back(current_val);
-                current_val = "";
+                current_val.clear();
             } else {
                 current_val += c;
             }
@@ -212,7 +304,7 @@ void loadDataFromCSV(RTree& tree, const std::string& filename) {
 
         if (row.size() < 8) continue;
 
-        location = row[0];
+        std::string location = row[0];
         double price = std::stod(row[1]);
         double area = std::stod(row[2]);
         int bedrooms = std::stoi(row[3]);
@@ -222,24 +314,35 @@ void loadDataFromCSV(RTree& tree, const std::string& filename) {
         double y_max = std::stod(row[7]);
 
         BoundingBox bbox(x_min, y_min, x_max, y_max);
-        Property* prop = new Property(location, price, area, bedrooms, bbox);
-        tree.insert(prop);
-        count++;
+        properties.push_back(new Property(location, price, area, bedrooms, bbox));
     }
     file.close();
-    std::cout << "Successfully loaded " << count << " properties into the R-Tree." << std::endl;
+    std::cout << "Loaded " << properties.size() << " properties from CSV." << std::endl;
+    return properties;
 }
 
-int main() {
-    RTree tree;
-    
-    std::cout << "Loading data..." << std::endl;
-    loadDataFromCSV(tree, "data/properties.csv");
+// ============================================================================
+// Main Application
+// ============================================================================
 
-    // Initialize Crow App with CORS middleware
+int main() {
+    auto app_start = std::chrono::high_resolution_clock::now();
+
+    // ---- Load data and build spatial index ----
+    std::cout << "Loading data..." << std::endl;
+    auto properties = loadDataFromCSV("data/properties.csv");
+
+    std::cout << "Building R-Tree index..." << std::endl;
+    RTree tree;
+    tree.bulkLoad(properties);
+
+    auto app_ready = std::chrono::high_resolution_clock::now();
+    double startup_ms = std::chrono::duration<double, std::milli>(app_ready - app_start).count();
+    std::cout << "Server ready in " << (int)startup_ms << "ms" << std::endl;
+
+    // ---- Initialize Crow App with CORS middleware ----
     crow::App<crow::CORSHandler> app;
 
-    // Setup CORS rules
     auto& cors = app.get_middleware<crow::CORSHandler>();
     cors
       .global()
@@ -247,49 +350,109 @@ int main() {
         .methods("POST"_method, "GET"_method, "OPTIONS"_method)
         .origin("*");
 
+    // ================================================================
+    // GET /api/properties/search — Proximity search (paginated)
+    // ================================================================
     CROW_ROUTE(app, "/api/properties/search")
     ([&tree](const crow::request& req){
-        double x = req.url_params.get("x") ? std::stod(req.url_params.get("x")) : -95.0; // lon
-        double y = req.url_params.get("y") ? std::stod(req.url_params.get("y")) : 38.0; // lat
+        auto t0 = std::chrono::high_resolution_clock::now();
+
+        // Parse query parameters with defaults
+        double x = req.url_params.get("x") ? std::stod(req.url_params.get("x")) : -95.0;
+        double y = req.url_params.get("y") ? std::stod(req.url_params.get("y")) : 38.0;
         double distance_km = req.url_params.get("distance_km") ? std::stod(req.url_params.get("distance_km")) : 100.0;
         double max_price = req.url_params.get("max_price") ? std::stod(req.url_params.get("max_price")) : 100000000.0;
         double min_area = req.url_params.get("min_area") ? std::stod(req.url_params.get("min_area")) : 0.0;
         int min_bedrooms = req.url_params.get("min_bedrooms") ? std::stoi(req.url_params.get("min_bedrooms")) : 0;
+        int page = req.url_params.get("page") ? std::stoi(req.url_params.get("page")) : 1;
+        int per_page = req.url_params.get("per_page") ? std::stoi(req.url_params.get("per_page")) : DEFAULT_PER_PAGE;
 
-        auto results = tree.queryNearLocation(x, y, distance_km, max_price, min_area, min_bedrooms);
-        
+        // Clamp pagination params
+        page = std::max(1, page);
+        per_page = std::max(1, std::min(per_page, MAX_PER_PAGE));
+
+        // Execute spatial query (results are sorted by distance)
+        auto all_results = tree.queryNearLocation(x, y, distance_km, max_price, min_area, min_bedrooms);
+
+        int total = (int)all_results.size();
+        int offset = (page - 1) * per_page;
+        if (offset > total) offset = total;
+        int end_idx = std::min(offset + per_page, total);
+        bool has_more = end_idx < total;
+        int count = end_idx - offset;
+
+        // Serialize the current page of results
         std::vector<crow::json::wvalue> json_results;
-        for (const auto& prop : results) {
-            json_results.push_back(prop->toJson());
+        json_results.reserve(count);
+        for (int i = offset; i < end_idx; i++) {
+            json_results.push_back(all_results[i].first->toJsonWithDistance(all_results[i].second));
         }
 
+        auto t1 = std::chrono::high_resolution_clock::now();
+        double query_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+
+        std::cout << "SEARCH: (" << x << "," << y << ") r=" << distance_km
+                  << "km -> " << total << " hits in " << query_ms << "ms"
+                  << " [page " << page << ", showing " << count << "]" << std::endl;
+
         crow::json::wvalue final_result;
+        final_result["count"] = count;
+        final_result["total"] = total;
+        final_result["page"] = page;
+        final_result["per_page"] = per_page;
+        final_result["has_more"] = has_more;
+        final_result["query_time_ms"] = std::round(query_ms * 100.0) / 100.0;
         final_result["properties"] = std::move(json_results);
-        final_result["count"] = results.size();
         return final_result;
     });
 
+    // ================================================================
+    // GET /api/properties/range — Bounding box range query (paginated)
+    // ================================================================
     CROW_ROUTE(app, "/api/properties/range")
     ([&tree](const crow::request& req){
+        auto t0 = std::chrono::high_resolution_clock::now();
+
         double x_min = req.url_params.get("x_min") ? std::stod(req.url_params.get("x_min")) : -180.0;
         double y_min = req.url_params.get("y_min") ? std::stod(req.url_params.get("y_min")) : -90.0;
         double x_max = req.url_params.get("x_max") ? std::stod(req.url_params.get("x_max")) : 180.0;
         double y_max = req.url_params.get("y_max") ? std::stod(req.url_params.get("y_max")) : 90.0;
+        int page = req.url_params.get("page") ? std::stoi(req.url_params.get("page")) : 1;
+        int per_page = req.url_params.get("per_page") ? std::stoi(req.url_params.get("per_page")) : DEFAULT_PER_PAGE;
+
+        page = std::max(1, page);
+        per_page = std::max(1, std::min(per_page, MAX_PER_PAGE));
 
         BoundingBox query_range(x_min, y_min, x_max, y_max);
-        auto results = tree.query(query_range);
+        auto all_results = tree.query(query_range);
+
+        int total = (int)all_results.size();
+        int offset = (page - 1) * per_page;
+        if (offset > total) offset = total;
+        int end_idx = std::min(offset + per_page, total);
+        bool has_more = end_idx < total;
+        int count = end_idx - offset;
 
         std::vector<crow::json::wvalue> json_results;
-        // Limit results to 1000 to prevent huge JSON payloads for giant bounding boxes
-        int limit = std::min(1000, (int)results.size());
-        for (int i=0; i<limit; i++) {
-            json_results.push_back(results[i]->toJson());
+        json_results.reserve(count);
+        for (int i = offset; i < end_idx; i++) {
+            json_results.push_back(all_results[i]->toJson());
         }
 
+        auto t1 = std::chrono::high_resolution_clock::now();
+        double query_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+
+        std::cout << "RANGE: [" << x_min << "," << y_min << " -> " << x_max << "," << y_max
+                  << "] -> " << total << " hits in " << query_ms << "ms" << std::endl;
+
         crow::json::wvalue final_result;
+        final_result["count"] = count;
+        final_result["total"] = total;
+        final_result["page"] = page;
+        final_result["per_page"] = per_page;
+        final_result["has_more"] = has_more;
+        final_result["query_time_ms"] = std::round(query_ms * 100.0) / 100.0;
         final_result["properties"] = std::move(json_results);
-        final_result["count"] = limit;
-        final_result["total"] = results.size();
         return final_result;
     });
 
